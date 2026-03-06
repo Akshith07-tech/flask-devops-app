@@ -1,4 +1,4 @@
-name: CI/CD to Minikube on EC2
+name: Simple CI/CD to Minikube on EC2
 
 on:
   push:
@@ -10,43 +10,47 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    # Step 1: Checkout your repo
+    # Step 1: Checkout code
     - name: Checkout code
       uses: actions/checkout@v3
 
-    # Step 2: Setup SSH key for EC2
+    # Step 2: Setup SSH key
     - name: Setup SSH key
+      env:
+        EC2_IP: ${{ secrets.EC2_IP }}
       run: |
         mkdir -p ~/.ssh
         echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_rsa
         chmod 600 ~/.ssh/id_rsa
-        # Add EC2 host to known_hosts
-        ssh-keyscan -H ${{ secrets.EC2_IP }} >> ~/.ssh/known_hosts
+        ssh-keyscan -H $EC2_IP >> ~/.ssh/known_hosts
 
-    # Step 3: Copy project files to EC2
+    # Step 3: Test SSH connection (optional but recommended)
+    - name: Test SSH connection
+      env:
+        EC2_IP: ${{ secrets.EC2_IP }}
+      run: |
+        ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ubuntu@$EC2_IP "echo SSH connection successful"
+
+    # Step 4: Copy project to EC2
     - name: Copy project to EC2
       env:
         EC2_IP: ${{ secrets.EC2_IP }}
       run: |
         rsync -avz -e "ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no" ./ ubuntu@$EC2_IP:/home/ubuntu/flask-devops-app
 
-    # Step 4: SSH into EC2 and deploy
+    # Step 5: Deploy on EC2
     - name: Deploy on EC2
       env:
         EC2_IP: ${{ secrets.EC2_IP }}
       run: |
-        ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ubuntu@$EC2_IP << 'EOF'
-          set -e  # exit if any command fails
+        ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ubuntu@$EC2_IP << EOF
+          set -e
           cd /home/ubuntu/flask-devops-app
-
           echo "Building Docker image..."
           docker build -t flask-devops-app:latest .
-
           echo "Loading image into Minikube..."
           minikube image load flask-devops-app:latest
-
           echo "Updating Kubernetes deployment..."
           kubectl set image deployment/flask-deployment flask-container=flask-devops-app:latest
-
           echo "Deployment finished successfully!"
         EOF
