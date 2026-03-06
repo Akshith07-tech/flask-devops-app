@@ -1,0 +1,32 @@
+name: CI/CD to Minikube on EC2
+
+on:
+  push:
+    branches:
+      - main  # Make sure this is your branch name
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Setup SSH with EC2 PEM key
+      uses: webfactory/ssh-agent@v0.9.0
+      with:
+        ssh-private-key: ${{ secrets.EC2_PEM_KEY }}
+
+    - name: Copy code to EC2
+      run: |
+        rsync -avz -e "ssh -o StrictHostKeyChecking=no" ./ ubuntu@13.59.147.88:/home/ubuntu/flask-devops-app
+
+    - name: Build and deploy on EC2
+      run: |
+        ssh -o StrictHostKeyChecking=no ubuntu@13.59.147.88 << 'EOF'
+        cd /home/ubuntu/flask-devops-app
+        docker build -t flask-devops-app:latest .
+        minikube image load flask-devops-app:latest
+        kubectl set image deployment/flask-deployment flask-container=flask-devops-app:latest
+        EOF
